@@ -2,17 +2,20 @@
   "expo": {
     "name": "Triven Calling",
     "slug": "triven-calling-tracker",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#071407"
     },
     "android": {
       "package": "com.triven.callingtracker",
-      "versionCode": 1,
+      "versionCode": 2,
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#071407"
       },
       "permissions": [
@@ -27,18 +30,10 @@
         "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
       ]
     },
-    "plugins": [
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "minSdkVersion": 24,
-            "targetSdkVersion": 34,
-            "compileSdkVersion": 34
-          }
-        }
-      ]
-    ]
+    "extra": {
+      "eas": {
+        "projectId": "169e73b0-bb87-4cd8-8d34-5e229a7495b1"
+      }
+    }
   }
 }
-

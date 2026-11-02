@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -11,10 +11,20 @@ import {
   Alert,
   ActivityIndicator,
   StatusBar,
+  AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
-import CallLog from 'react-native-call-log';
+import { registerRootComponent } from 'expo';
+import { registerBackgroundSync } from './backgroundTask';
+
+let CallLog = null;
+try {
+  CallLog = require('react-native-call-log');
+  if (CallLog?.default) CallLog = CallLog.default;
+} catch (e) {
+  console.log('CallLog module fallback initialized');
+}
 
 const API_BASE_URL = 'https://xluxtriven.de/api/v1';
 
@@ -25,8 +35,10 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(null);
   const [callLogs, setCallLogs] = useState([]);
   const [stats, setStats] = useState({ total: 0, connected: 0, cnp: 0, talkTime: 0 });
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     checkSavedSession();
@@ -36,10 +48,28 @@ export default function App() {
     if (token) {
       requestCallPermissions();
       loadLocalCallLogs();
+      registerBackgroundSync(); // Registers 20-min WorkManager background task
+
+      // Initial sync on startup
+      syncCallsWithServer();
+
+      // Periodic Auto-Sync every 20 minutes (20 * 60 * 1000 ms)
       const interval = setInterval(() => {
         syncCallsWithServer();
-      }, 30000); // Auto-sync every 30 seconds
-      return () => clearInterval(interval);
+      }, 20 * 60 * 1000);
+
+      // Listen for app coming to foreground (e.g. employee just finished phone call)
+      const subscription = AppState.addEventListener('change', (nextAppState) => {
+        if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+          syncCallsWithServer();
+        }
+        appState.current = nextAppState;
+      });
+
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
     }
   }, [token]);
 
@@ -47,6 +77,8 @@ export default function App() {
     try {
       const savedUser = await AsyncStorage.getItem('user');
       const savedToken = await AsyncStorage.getItem('token');
+      const savedSync = await AsyncStorage.getItem('lastSyncTime');
+      if (savedSync) setLastSyncTime(savedSync);
       if (savedUser && savedToken) {
         setUser(JSON.parse(savedUser));
         setToken(savedToken);
@@ -77,12 +109,18 @@ export default function App() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Required', 'Please enter email and password');
+      Alert.alert('Required', 'Please enter email or phone and password');
       return;
     }
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
+      const cleanInput = email.trim();
+      const isPhone = /^\+?[\d\s-]{7,15}$/.test(cleanInput);
+      const payload = {
+        password,
+        ...(isPhone ? { phone: cleanInput } : { email: cleanInput }),
+      };
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, payload);
       const { user: userData, tokens } = res.data.data;
       await AsyncStorage.setItem('user', JSON.stringify(userData));
       await AsyncStorage.setItem('token', tokens.access.token);
@@ -103,6 +141,9 @@ export default function App() {
 
   const loadLocalCallLogs = async () => {
     try {
+      if (!CallLog || typeof CallLog.load !== 'function') {
+        return;
+      }
       const logs = await CallLog.load(50);
       setCallLogs(logs);
 
@@ -131,6 +172,7 @@ export default function App() {
 
   const syncCallsWithServer = async () => {
     if (!token) return;
+    if (!CallLog || typeof CallLog.load !== 'function') return;
     setSyncing(true);
     try {
       const logs = await CallLog.load(30);
@@ -153,6 +195,9 @@ export default function App() {
         { logs: payload },
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      setLastSyncTime(now);
+      await AsyncStorage.setItem('lastSyncTime', now);
       loadLocalCallLogs();
     } catch (e) {
       console.log('Sync error:', e.message);
@@ -220,7 +265,12 @@ export default function App() {
       {/* Live Badge */}
       <View style={styles.statusBadge}>
         <View style={styles.pulseDot} />
-        <Text style={styles.statusText}>Background Tracking Active & Auto-Sync ON</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.statusText}>Auto-Sync: Active (Every 20 Mins & On Call End)</Text>
+          <Text style={styles.statusSubText}>
+            Last Synced: {lastSyncTime ? `${lastSyncTime}` : 'Connecting...'}
+          </Text>
+        </View>
       </View>
 
       {/* Stats Cards */}
@@ -300,9 +350,10 @@ const styles = StyleSheet.create({
   logoutBtn: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#1f2937', borderRadius: 8 },
   logoutBtnText: { color: '#ef4444', fontSize: 12, fontWeight: 'bold' },
 
-  statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#064e3b', padding: 8, borderRadius: 8, marginBottom: 16 },
-  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#34d399', marginRight: 8 },
-  statusText: { color: '#34d399', fontSize: 12, fontWeight: '600' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#064e3b', padding: 10, borderRadius: 10, marginBottom: 16 },
+  pulseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#34d399', marginRight: 10 },
+  statusText: { color: '#34d399', fontSize: 12, fontWeight: '700' },
+  statusSubText: { color: '#a7f3d0', fontSize: 11, marginTop: 2 },
 
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 16 },
   statCard: { width: '48%', backgroundColor: '#0f240f', padding: 12, borderRadius: 10, marginBottom: 10, borderLeftWidth: 4 },
@@ -323,4 +374,6 @@ const styles = StyleSheet.create({
   durationBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   durationText: { fontSize: 11, fontWeight: 'bold' },
 });
+
+registerRootComponent(App);
 
