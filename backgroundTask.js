@@ -86,3 +86,4 @@ export const registerBackgroundSync = async () => {
     console.log('[BackgroundFetch] Registration error:', error.message);
   }
 };
+
