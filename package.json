@@ -10,18 +10,17 @@
     "build:apk": "npm install && npx eas-cli build -p android --profile preview"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^1.23.1",
+    "@react-native-async-storage/async-storage": "1.21.0",
     "axios": "^1.6.8",
     "expo": "^50.0.0",
-    "expo-background-fetch": "~11.3.0",
+    "expo-background-fetch": "~11.8.1",
     "expo-status-bar": "~1.11.1",
-    "expo-task-manager": "~11.8.2",
+    "expo-task-manager": "~11.7.3",
     "react": "18.2.0",
     "react-native": "0.73.6",
     "react-native-call-log": "*"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0",
-    "eas-cli": "^7.8.2"
+    "@babel/core": "^7.20.0"
   }
 }
