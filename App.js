@@ -253,8 +253,10 @@ export default function App() {
         const avg = s.connectedCalls > 0 ? Math.round((s.totalTalkTime || 0) / s.connectedCalls) : 0;
         setStats({
           dialedCalls: dialed,
+          totalDialAttempts: s.totalDialAttempts || dialed,
           connectedCalls: s.connectedCalls || 0,
           cnpCalls: s.cnpCalls || 0,
+          totalCnpAttempts: s.totalCnpAttempts || s.cnpCalls || 0,
           missedCalls: s.missedCalls || 0,
           pendingMissedCalls: s.pendingMissedCalls || 0,
           resolvedMissedCalls: s.resolvedMissedCalls || 0,
@@ -422,13 +424,25 @@ export default function App() {
             ...item,
             attemptCount: 1,
             allTimestamps: [item.timestamp],
+            latestTimestamp: item.timestamp,
+            earliestTimestamp: item.timestamp,
           };
         } else {
           groups[phone].attemptCount += 1;
           groups[phone].allTimestamps.push(item.timestamp);
+          if (new Date(item.timestamp).getTime() > new Date(groups[phone].latestTimestamp).getTime()) {
+            groups[phone].latestTimestamp = item.timestamp;
+            groups[phone].timestamp = item.timestamp;
+            groups[phone]._id = item._id;
+          }
+          if (new Date(item.timestamp).getTime() < new Date(groups[phone].earliestTimestamp).getTime()) {
+            groups[phone].earliestTimestamp = item.timestamp;
+          }
         }
       });
-      list = Object.values(groups);
+      list = Object.values(groups).sort(
+        (a, b) => new Date(b.latestTimestamp || b.timestamp).getTime() - new Date(a.latestTimestamp || a.timestamp).getTime()
+      );
     } else if (categoryFilter === 'all') {
       // 5. In All Calls: collapse repeated CNP attempts to the same phone number
       const cnpGroups = {};
@@ -440,10 +454,24 @@ export default function App() {
         } else {
           const phone = item.phoneNumber;
           if (!cnpGroups[phone]) {
-            cnpGroups[phone] = { ...item, attemptCount: 1, allTimestamps: [item.timestamp] };
+            cnpGroups[phone] = {
+              ...item,
+              attemptCount: 1,
+              allTimestamps: [item.timestamp],
+              latestTimestamp: item.timestamp,
+              earliestTimestamp: item.timestamp,
+            };
           } else {
             cnpGroups[phone].attemptCount += 1;
             cnpGroups[phone].allTimestamps.push(item.timestamp);
+            if (new Date(item.timestamp).getTime() > new Date(cnpGroups[phone].latestTimestamp).getTime()) {
+              cnpGroups[phone].latestTimestamp = item.timestamp;
+              cnpGroups[phone].timestamp = item.timestamp;
+              cnpGroups[phone]._id = item._id;
+            }
+            if (new Date(item.timestamp).getTime() < new Date(cnpGroups[phone].earliestTimestamp).getTime()) {
+              cnpGroups[phone].earliestTimestamp = item.timestamp;
+            }
           }
         }
       });
@@ -613,7 +641,10 @@ export default function App() {
           <View style={[styles.metricCard, { borderLeftColor: '#3b82f6' }]}>
             <Text style={styles.metricLabel}>Total Dialed</Text>
             <Text style={[styles.metricValue, { color: '#60a5fa' }]}>{stats.dialedCalls}</Text>
-            <Text style={styles.metricSub}>{stats.connectedCalls} talked + {stats.cnpCalls} CNP</Text>
+            <Text style={styles.metricSub}>
+              {stats.connectedCalls} talked + {stats.cnpCalls} CNP
+              {stats.totalDialAttempts && stats.totalDialAttempts > stats.dialedCalls ? ` (${stats.totalDialAttempts} dials)` : ''}
+            </Text>
           </View>
 
           {/* Card 2: Connected */}
@@ -629,7 +660,11 @@ export default function App() {
           <View style={[styles.metricCard, { borderLeftColor: '#f59e0b' }]}>
             <Text style={styles.metricLabel}>Not Picked (CNP)</Text>
             <Text style={[styles.metricValue, { color: '#fbbf24' }]}>{stats.cnpCalls}</Text>
-            <Text style={styles.metricSub}>Customer didn't answer</Text>
+            <Text style={styles.metricSub}>
+              {stats.totalCnpAttempts && stats.totalCnpAttempts > stats.cnpCalls
+                ? `${stats.totalCnpAttempts} attempts (${stats.cnpCalls} leads)`
+                : "Customer didn't answer"}
+            </Text>
           </View>
 
           {/* Card 4: Inbound Missed */}
@@ -739,6 +774,9 @@ export default function App() {
                   <Text style={styles.callTimestamp}>
                     {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} •{' '}
                     {new Date(item.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {item.attemptCount > 1 && item.earliestTimestamp && item.earliestTimestamp !== item.latestTimestamp
+                      ? ` • 1st: ${new Date(item.earliestTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : ''}
                   </Text>
                 </View>
 
