@@ -28,7 +28,7 @@ TaskManager.defineTask(BACKGROUND_CALL_SYNC_TASK, async () => {
       return BackgroundFetch.BackgroundFetchResult.Failed;
     }
 
-    const logs = await CallLog.load(50);
+    const logs = await CallLog.load(100);
     if (!logs || logs.length === 0) {
       console.log('[BackgroundFetch] No call logs found to sync');
       return BackgroundFetch.BackgroundFetchResult.NoData;
