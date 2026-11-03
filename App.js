@@ -412,6 +412,44 @@ export default function App() {
         }
       });
       list = Object.values(groups);
+    } else if (categoryFilter === 'cnp') {
+      // 4. For Not Picked (CNP): 1 customer dialed up to 3 times = 1 row with attempt badge
+      const groups = {};
+      list.forEach((item) => {
+        const phone = item.phoneNumber;
+        if (!groups[phone]) {
+          groups[phone] = {
+            ...item,
+            attemptCount: 1,
+            allTimestamps: [item.timestamp],
+          };
+        } else {
+          groups[phone].attemptCount += 1;
+          groups[phone].allTimestamps.push(item.timestamp);
+        }
+      });
+      list = Object.values(groups);
+    } else if (categoryFilter === 'all') {
+      // 5. In All Calls: collapse repeated CNP attempts to the same phone number
+      const cnpGroups = {};
+      const rest = [];
+      list.forEach((item) => {
+        const isCNP = item.callType === 'outgoing' && item.duration === 0;
+        if (!isCNP) {
+          rest.push(item);
+        } else {
+          const phone = item.phoneNumber;
+          if (!cnpGroups[phone]) {
+            cnpGroups[phone] = { ...item, attemptCount: 1, allTimestamps: [item.timestamp] };
+          } else {
+            cnpGroups[phone].attemptCount += 1;
+            cnpGroups[phone].allTimestamps.push(item.timestamp);
+          }
+        }
+      });
+      list = [...rest, ...Object.values(cnpGroups)].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
     }
 
     return list;
@@ -715,7 +753,9 @@ export default function App() {
                   )}
                   {isCNP && (
                     <View style={styles.badgeCNP}>
-                      <Text style={styles.badgeCNPText}>NOT PICKED (0s)</Text>
+                      <Text style={styles.badgeCNPText}>
+                        NOT PICKED {item.attemptCount > 1 ? `(${item.attemptCount}x Attempts)` : '(0s)'}
+                      </Text>
                     </View>
                   )}
                   {isMissed && (
